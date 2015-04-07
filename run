@@ -1,0 +1,47 @@
+#!/bin/bash
+set -e
+
+source "${MMONIT_ROOT}/bin/scripts/lib/config.sh"
+source "${MMONIT_ROOT}/bin/scripts/lib/functions.sh"
+
+ctl() {
+    local action="$1"
+    ${MMONITBIN} ${action} >/dev/null
+}
+
+_trap() {
+    echo "Stopping mmonit..."
+    if ctl stop ; then
+        local cnt=0
+        sleep 1
+        while ctl status || test $? = 1 ; do
+            cnt=`expr $cnt + 1`
+            if [ $cnt -ge 60 ] ; then
+                break
+            fi
+            sleep 1
+        done
+    fi
+}
+
+# Catch signals and shutdown mmonit
+trap _trap SIGTERM SIGINT
+
+# run monit
+case "$@" in
+    start)
+        tail -F ${MONIT_LOG} \
+                ${MMONIT_ROOT}/logs/error.log \
+                ${MMONIT_ROOT}/logs/mmonit.log &
+        echo "Starting monit..."
+	exec ${MONIT_BIN} -c ${MONIT_CONF} -l ${MONIT_LOG} &
+	exec ${MMONIT_BIN} start &
+	exec "/bin/bash"
+        child=$!
+        sleep 3
+        wait $child
+    ;;
+    shell)
+        exec "/bin/bash"
+    ;;
+esac
